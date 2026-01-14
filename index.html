@@ -199,17 +199,7 @@
       transform: none !important;
       box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2) !important;
     }
- .audio-warning {
-            background: var(--danger-bg);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-top: 1.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
-            font-size: 1.1rem;
-        }
+
     /* Responsive */
     @media (max-width: 992px) {
       h1 { font-size: 2.8rem; }
@@ -262,14 +252,15 @@
     <button id="resetBtn" class="btn btn-reset">
       <i class="fas fa-redo"></i> REINICIAR
     </button>
+  </div>
+     <div class="audio-warning">
+            <i class="fas fa-volume-up"></i>
+            <div>
+                <strong>IMPORTANTE:</strong> Haz clic en la página antes de iniciar para activar el audio
+            </div>
 </div>
-<div class="audio-warning">
-    <i class="fas fa-volume-up"></i>
-    <div>
-        <strong>IMPORTANTE:</strong> Haz clic en la página antes de iniciar para activar el audio
-    </div>
-</div>
-</div>
+
+<script>
 // ================= 🔥 CONFIGURACIÓN FIREBASE =================
 // ⚠️ REEMPLAZA CON TUS CREDENCIALES
 const firebaseConfig = {
@@ -540,8 +531,4 @@ habilitarControles(true, false, true);
 console.log("🚀 Cronómetro sincronizado listo");
 </script>
 </body>
-
 </html>
-
-
-
