@@ -222,61 +222,6 @@
       color: white;
     }
 
-    /* Aviso de audio */
-    .aviso-audio {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 12px 20px;
-      border-radius: 25px;
-      font-size: 1rem;
-      font-weight: 600;
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-      animation: pulse-aviso 2s infinite alternate;
-      backdrop-filter: blur(5px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      transition: all 0.3s ease;
-    }
-
-    @keyframes pulse-aviso {
-      0% { 
-        transform: translateX(-50%) scale(1);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-      }
-      100% { 
-        transform: translateX(-50%) scale(1.05);
-        box-shadow: 0 6px 20px rgba(255, 204, 0, 0.4);
-      }
-    }
-
-    .aviso-audio i {
-      color: var(--accent-yellow);
-      font-size: 1.2rem;
-    }
-
-    .aviso-audio.audio-activado {
-      background: rgba(0, 200, 83, 0.8);
-      animation: pulse-verde 2s infinite alternate;
-    }
-
-    @keyframes pulse-verde {
-      0% { 
-        transform: translateX(-50%) scale(1);
-        box-shadow: 0 4px 15px rgba(0, 200, 83, 0.3);
-      }
-      100% { 
-        transform: translateX(-50%) scale(1.05);
-        box-shadow: 0 6px 20px rgba(0, 200, 83, 0.6);
-      }
-    }
-
     /* Responsive */
     @media (max-width: 992px) {
       h1 { font-size: 2.8rem; }
@@ -297,11 +242,6 @@
         font-size: 0.8rem;
         padding: 6px 12px;
       }
-      .aviso-audio {
-        font-size: 0.9rem;
-        padding: 10px 16px;
-        bottom: 15px;
-      }
     }
 
     @media (max-width: 480px) {
@@ -310,13 +250,6 @@
       .phase-indicator { font-size: 1.5rem; min-width: 250px; padding: 0.8rem; }
       .btn { min-width: 100%; padding: 1rem 1.8rem; font-size: 1.1rem; }
       .controls { flex-direction: column; }
-      .aviso-audio {
-        font-size: 0.8rem;
-        padding: 8px 14px;
-        bottom: 10px;
-        width: 90%;
-        text-align: center;
-      }
     }
   </style>
 </head>
@@ -325,12 +258,6 @@
 <!-- Indicador de conexión -->
 <div id="conexionIndicator" class="conexion-indicator conexion-activa">
   <i class="fas fa-wifi"></i> CONECTADO
-</div>
-
-<!-- Aviso de audio -->
-<div id="avisoAudio" class="aviso-audio">
-  <i class="fas fa-volume-up"></i>
-  <span>Toque la pantalla para activar el sonido</span>
 </div>
 
 <div class="container">
@@ -384,6 +311,7 @@ let intervalo = null;
 let enFaseBloque = true;
 let tiempoRestante = TIEMPO_BLOQUE;
 let tiempoTotalFase = TIEMPO_BLOQUE;
+let tiempoPausado = null;  // Guardaremos cuándo se pausó
 
 // Audio
 let audioContext = null;
@@ -394,42 +322,9 @@ function inicializarAudio() {
   try {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     sonidosHabilitados = true;
-    console.log("✅ Audio habilitado");
-    
-    // Cambiar el aviso de audio para indicar que está activado
-    const avisoAudio = document.getElementById('avisoAudio');
-    const icono = avisoAudio.querySelector('i');
-    const texto = avisoAudio.querySelector('span');
-    
-    avisoAudio.classList.add('audio-activado');
-    icono.className = 'fas fa-volume-up';
-    texto.textContent = 'Sonido activado ✓';
-    
-    // Después de 3 segundos, volver al mensaje original pero mantener el estilo
-    setTimeout(() => {
-      texto.textContent = 'Sonido activado - Toque para probar';
-    }, 3000);
-    
-    // Remover los listeners de activación de audio
-    document.removeEventListener('click', manejarActivacionAudio);
-    document.removeEventListener('touchstart', manejarActivacionAudio);
-    
   } catch (e) {
     console.error("❌ Audio no disponible:", e);
     sonidosHabilitados = false;
-    
-    // Si no se puede activar el audio, cambiar el mensaje
-    const avisoAudio = document.getElementById('avisoAudio');
-    const icono = avisoAudio.querySelector('i');
-    const texto = avisoAudio.querySelector('span');
-    
-    avisoAudio.style.background = 'rgba(255, 68, 68, 0.8)';
-    icono.className = 'fas fa-volume-mute';
-    texto.textContent = 'Audio no disponible';
-    
-    // Remover los listeners de activación de audio
-    document.removeEventListener('click', manejarActivacionAudio);
-    document.removeEventListener('touchstart', manejarActivacionAudio);
   }
 }
 
@@ -490,60 +385,47 @@ function reproducirPitidoFinal() {
 }
 
 // ================= 📡 SINCRONIZACIÓN =================
-// Estado inicial en Firebase si no existe
-db.ref("cronometro").once("value").then(snapshot => {
-  if (!snapshot.exists()) {
-    db.ref("cronometro").set({
-      enEjecucion: false,
-      fase: 'bloque',
-      inicio: null,
-      tiempoTranscurrido: null
-    });
-  }
-});
-
 db.ref("cronometro").on("value", snapshot => {
   const data = snapshot.val();
-  
-  // Determinar fase actual
-  if (data) {
-    enFaseBloque = data.fase === 'bloque';
-  } else {
+  if (!data) {
+    // Estado inicial
     enFaseBloque = true;
-  }
-  
-  tiempoTotalFase = enFaseBloque ? TIEMPO_BLOQUE : TIEMPO_TRANSICION;
-
-  if (!data || !data.enEjecucion) {
-    // Cronómetro DETENIDO o PAUSADO
-    clearInterval(intervalo);
-    
-    if (!data || data.tiempoTranscurrido === null) {
-      // Estado inicial - completamente detenido (mostrar 04:00)
-      tiempoRestante = TIEMPO_BLOQUE;
-      actualizarBotones(true, false, false, true); // INICIAR y REINICIAR habilitados
-    } else if (data.tiempoTranscurrido !== null && data.tiempoTranscurrido !== undefined) {
-      // Está PAUSADO - mostrar tiempo donde se pausó
-      tiempoRestante = Math.max(tiempoTotalFase - data.tiempoTranscurrido, 0);
-      actualizarBotones(true, true, false, true); // INICIAR, REANUDAR y REINICIAR habilitados
-    } else {
-      // Detenido pero no pausado
-      tiempoRestante = tiempoTotalFase;
-      actualizarBotones(true, false, false, true); // INICIAR y REINICIAR habilitados
-    }
-    
+    tiempoRestante = TIEMPO_BLOQUE;
+    tiempoTotalFase = TIEMPO_BLOQUE;
+    tiempoPausado = null;
     actualizarDisplay();
     actualizarFase();
-  } else {
-    // Cronómetro CORRIENDO
-    const ahora = Date.now();
-    const tiempoTranscurrido = Math.floor((ahora - data.inicio) / 1000);
-    tiempoRestante = Math.max(tiempoTotalFase - tiempoTranscurrido, 0);
+    habilitarControles(true, false, true);
+    actualizarBotonDetener(false);
+    clearInterval(intervalo);
+    return;
+  }
 
+  // Determinar fase actual
+  enFaseBloque = data.fase === 'bloque';
+  tiempoTotalFase = enFaseBloque ? TIEMPO_BLOQUE : TIEMPO_TRANSICION;
+
+  // Manejar estado de ejecución
+  if (data.enEjecucion) {
+    // Cronómetro corriendo
+    if (data.pausadoEn) {
+      // Si había estado pausado, calcular desde el momento de pausa
+      const tiempoTranscurridoAntesDePausa = Math.floor((data.pausadoEn - data.inicio) / 1000);
+      const ahora = Date.now();
+      const tiempoTranscurridoDesdeReanudacion = Math.floor((ahora - data.reanudadoEn) / 1000);
+      tiempoRestante = Math.max(tiempoTotalFase - tiempoTranscurridoAntesDePausa - tiempoTranscurridoDesdeReanudacion, 0);
+    } else {
+      // Calcular normalmente
+      const ahora = Date.now();
+      const tiempoTranscurrido = Math.floor((ahora - data.inicio) / 1000);
+      tiempoRestante = Math.max(tiempoTotalFase - tiempoTranscurrido, 0);
+    }
+    
     // Actualizar interfaz
     actualizarDisplay();
     actualizarFase();
-    actualizarBotones(false, true, true, true); // DETENER y REINICIAR habilitados
+    habilitarControles(false, true, false);
+    actualizarBotonDetener(true);
     
     // Limpiar intervalo anterior
     clearInterval(intervalo);
@@ -554,13 +436,29 @@ db.ref("cronometro").on("value", snapshot => {
       actualizarDisplay();
       manejarAlarmasLocales();
 
-      // Verificar cambio de fase
+      // Verificar cambio de fase LOCALMENTE
       if (tiempoRestante === 0) {
         clearInterval(intervalo);
         // Cambiar fase en Firebase
         cambiarFaseEnFirebase(data);
       }
     }, 1000);
+  } else {
+    // Cronómetro detenido
+    if (data.pausadoEn) {
+      // Está pausado, calcular tiempo restante basado en cuando se pausó
+      const tiempoTranscurrido = Math.floor((data.pausadoEn - data.inicio) / 1000);
+      tiempoRestante = Math.max(tiempoTotalFase - tiempoTranscurrido, 0);
+    } else {
+      // Está completamente detenido
+      tiempoRestante = tiempoTotalFase;
+    }
+    
+    actualizarDisplay();
+    actualizarFase();
+    habilitarControles(true, false, true);
+    actualizarBotonDetener(false);
+    clearInterval(intervalo);
   }
 });
 
@@ -569,65 +467,62 @@ function cambiarFaseEnFirebase(dataActual) {
     const data = snapshot.val();
     if (!data || !data.enEjecucion) return;
     
-    // Cambiar a la siguiente fase
+    // Verificar que aún estemos en la misma fase
+    if (data.fase !== dataActual.fase) return;
+    
+    // Cambiar fase
     const nuevaFase = data.fase === 'bloque' ? 'transicion' : 'bloque';
     db.ref("cronometro").set({
       enEjecucion: true,
       fase: nuevaFase,
       inicio: Date.now(),
-      tiempoTranscurrido: null
+      pausadoEn: null,
+      reanudadoEn: null
     });
   });
 }
 
 // ================= 🎮 CONTROLES =================
 function iniciar() {
-  // INICIAR siempre comienza desde 4:00
   db.ref("cronometro").set({
     enEjecucion: true,
     fase: 'bloque',
     inicio: Date.now(),
-    tiempoTranscurrido: null
+    pausadoEn: null,
+    reanudadoEn: null
   });
 }
 
 function detener() {
-  // Obtener estado actual
+  // Obtener estado actual para decidir qué hacer
   db.ref("cronometro").once("value").then(snapshot => {
     const data = snapshot.val();
     if (!data) return;
     
     if (data.enEjecucion) {
-      // Si está corriendo, PAUSAR
-      const ahora = Date.now();
-      const tiempoTranscurrido = Math.floor((ahora - data.inicio) / 1000);
-      
+      // Si está corriendo, lo pausamos
       db.ref("cronometro").update({
         enEjecucion: false,
-        tiempoTranscurrido: tiempoTranscurrido
+        pausadoEn: Date.now()
       });
     } else {
-      // Si está pausado, REANUDAR desde donde se pausó
-      const tiempoTranscurrido = data.tiempoTranscurrido || 0;
-      const nuevoInicio = Date.now() - (tiempoTranscurrido * 1000);
-      
-      db.ref("cronometro").set({
+      // Si está pausado, lo reanudamos
+      db.ref("cronometro").update({
         enEjecucion: true,
-        fase: data.fase || 'bloque',
-        inicio: nuevoInicio,
-        tiempoTranscurrido: null
+        reanudadoEn: Date.now()
       });
     }
   });
 }
 
 function reiniciar() {
-  // REINICIAR - vuelve a 4:00 y empieza automáticamente
+  // Al reiniciar, comenzamos inmediatamente desde el bloque
   db.ref("cronometro").set({
     enEjecucion: true,
     fase: 'bloque',
     inicio: Date.now(),
-    tiempoTranscurrido: null
+    pausadoEn: null,
+    reanudadoEn: null
   });
 }
 
@@ -665,35 +560,20 @@ function actualizarFase() {
   }
 }
 
-function actualizarBotones(iniciarHabilitado, detenerHabilitado, esPausa, reiniciarHabilitado) {
-  const startBtn = document.getElementById('startBtn');
+function actualizarBotonDetener(estaCorriendo) {
   const stopBtn = document.getElementById('stopBtn');
-  const resetBtn = document.getElementById('resetBtn');
+  const icon = stopBtn.querySelector('i');
+  const text = stopBtn.querySelector('span');
   
-  // Botón INICIAR - SIEMPRE habilitado cuando el cronómetro NO está corriendo
-  startBtn.disabled = !iniciarHabilitado;
-  
-  // Botón DETENER/REANUDAR
-  stopBtn.disabled = !detenerHabilitado;
-  const stopIcon = stopBtn.querySelector('i');
-  const stopText = stopBtn.querySelector('span');
-  
-  if (esPausa) {
-    // Mostrar como DETENER (porque está corriendo)
-    stopIcon.className = 'fas fa-pause';
-    stopText.textContent = 'DETENER';
-  } else if (detenerHabilitado) {
-    // Mostrar como REANUDAR (porque está pausado)
-    stopIcon.className = 'fas fa-play';
-    stopText.textContent = 'REANUDAR';
+  if (estaCorriendo) {
+    // Cronómetro corriendo -> mostrar "DETENER"
+    icon.className = 'fas fa-pause';
+    text.textContent = 'DETENER';
   } else {
-    // Mostrar como DETENER (estado inicial)
-    stopIcon.className = 'fas fa-pause';
-    stopText.textContent = 'DETENER';
+    // Cronómetro pausado -> mostrar "REANUDAR"
+    icon.className = 'fas fa-play';
+    text.textContent = 'REANUDAR';
   }
-  
-  // Botón REINICIAR - siempre habilitado
-  resetBtn.disabled = !reiniciarHabilitado;
 }
 
 function manejarAlarmasLocales() {
@@ -714,6 +594,12 @@ function manejarAlarmasLocales() {
   }
 }
 
+function habilitarControles(iniciar, detener, reiniciar) {
+  document.getElementById('startBtn').disabled = !iniciar;
+  document.getElementById('stopBtn').disabled = !detener;
+  document.getElementById('resetBtn').disabled = !reiniciar;
+}
+
 // ================= 📶 MONITOREO DE CONEXIÓN =================
 db.ref(".info/connected").on("value", snapshot => {
   const conectado = snapshot.val();
@@ -728,53 +614,23 @@ db.ref(".info/connected").on("value", snapshot => {
   }
 });
 
-// ================= 🔊 ACTIVACIÓN DE AUDIO =================
-function manejarActivacionAudio(event) {
-  // Solo activar audio si NO se hace clic en un botón
-  if (!event.target.closest('.btn')) {
-    if (!sonidosHabilitados) {
-      inicializarAudio();
-      // Reproducir un sonido de prueba
-      if (audioContext) {
-        setTimeout(() => {
-          if (sonidosHabilitados) {
-            reproducirPitidoCorto();
-          }
-        }, 100);
-      }
-    }
-  }
-}
-
-// Agregar listeners para activar audio SOLO en áreas que no sean botones
-document.addEventListener('click', manejarActivacionAudio);
-document.addEventListener('touchstart', manejarActivacionAudio);
-
 // ================= 🚀 INICIALIZACIÓN =================
-// Configurar event listeners para los botones
-document.getElementById('startBtn').addEventListener('click', function(event) {
-  event.stopPropagation(); // Evitar que el evento se propague
-  iniciar();
-});
+document.getElementById('startBtn').addEventListener('click', iniciar);
+document.getElementById('stopBtn').addEventListener('click', detener);
+document.getElementById('resetBtn').addEventListener('click', reiniciar);
 
-document.getElementById('stopBtn').addEventListener('click', function(event) {
-  event.stopPropagation(); // Evitar que el evento se propague
-  detener();
-});
-
-document.getElementById('resetBtn').addEventListener('click', function(event) {
-  event.stopPropagation(); // Evitar que el evento se propague
-  reiniciar();
-});
+// Activar audio al primer clic
+document.addEventListener('click', function() {
+  if (!sonidosHabilitados) inicializarAudio();
+}, { once: true });
 
 // Estado inicial
 actualizarDisplay();
 actualizarFase();
-// INICIAR habilitado porque el cronómetro no está corriendo
-actualizarBotones(true, false, false, true);
+habilitarControles(true, false, true);
+actualizarBotonDetener(false);
 
 console.log("🚀 Cronómetro sincronizado listo");
-console.log("🔊 Toque la pantalla para activar el sonido");
 </script>
 </body>
 </html>
